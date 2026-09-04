@@ -71,15 +71,16 @@ bot.start(async (ctx) => {
     ]);
 
     const welcomeText = `
-╔═══════════════════╗
-  VLAZZ SERVERLESS VLESS
-╚═══════════════════╝
+╔══════════════════╗
+ VLAZZ SERVERLESS VLESS
+╚══════════════════╝
 
 Selamat datang di layanan akun VLESS gratis!
 
 :: SYSTEM INFO ————————
-├ Status : ONLINE (VLESS ONLY)
-├ owner : @heyyybangsyadd
+├ Status  : ONLINE (VLESS ONLY)
+├ owner   : @heyyybangsyadd
+├ Join CH : https://t.me/vlazxz
 
 Silakan tekan tombol di bawah untuk membuat akun VLESS:
     `;
