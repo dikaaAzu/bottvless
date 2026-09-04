@@ -72,7 +72,7 @@ bot.start(async (ctx) => {
 
     const welcomeText = `
 ╔══════════════════╗
-  VLAZZ SERVERLESS VLESS
+   VLAZZ SERVERLESS VLESS
 ╚══════════════════╝
 
 Selamat datang di layanan akun VLESS gratis!
