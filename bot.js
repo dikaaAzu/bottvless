@@ -1,16 +1,18 @@
 const { Telegraf, Markup } = require('telegraf');
 const crypto = require('crypto');
 const fs = require('fs');
-const http = require('http'); // Tambahan wajib untuk Railway
+const http = require('http'); // Wajib untuk server keep-alive di Railway
 
-// Ganti 'TOKEN_BOT_ANDA_DISINI' dengan token asli dari BotFather
+// ==========================================
+// PENGATURAN UTAMA BOT
+// ==========================================
 const BOT_TOKEN = "8475657676:AAGaMNm1fAExcSLytKWESmx5gUcWOe4KGIs";
-const ADMIN_ID = 6161529489; 
+const ADMIN_ID = 6161529489; // ID Telegram Anda (untuk akses /broadcast & notifikasi)
 const bot = new Telegraf(BOT_TOKEN);
 const USERS_FILE = 'users.json';
 
 // ==========================================
-// SERVER HTTP UNTUK RAILWAY (WAJIB)
+// SERVER HTTP KEEP-ALIVE UNTUK RAILWAY
 // ==========================================
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
@@ -22,18 +24,17 @@ http.createServer((req, res) => {
 });
 
 // ==========================================
-// DAFTAR DOMAIN ANDA
+// PENGATURAN DOMAIN & CHANNEL
 // ==========================================
 const domainList = [
     'vlez.eu.cc',
     'vlzxr.eu.cc',
 ];
 
-// USERNAME CHANNEL ANDA
 const CHANNEL_USERNAME = '@vlazxz'; 
 const CHANNEL_LINK = 'https://t.me/vlazxz'; 
 
-// Fungsi rekam ID user 
+// Fungsi rekam ID user otomatis ke file users.json
 function saveUser(userId) {
     let users = [ADMIN_ID];
     try {
@@ -50,6 +51,7 @@ function saveUser(userId) {
     }
 }
 
+// Daftar Bug Host
 const bugList = [
     { id: 'bug1', name: 'ava.game.naver.com', host: 'ava.game.naver.com' },
     { id: 'bug2', name: 'support.zoom.us', host: 'support.zoom.us' },
@@ -86,6 +88,7 @@ const dataServer = {
     }
 };
 
+// Fungsi Cek Membership Channel
 async function checkMembership(ctx) {
     try {
         const userId = ctx.from.id;
@@ -96,6 +99,7 @@ async function checkMembership(ctx) {
     }
 }
 
+// Fungsi Ambil UUID
 function getUuid() {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
         return crypto.randomUUID();
@@ -117,7 +121,7 @@ function checkSession(ctx) {
 }
 
 // ==========================================
-// BROADCAST
+// FITUR BROADCAST ADMIN
 // ==========================================
 bot.command('broadcast', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) return ctx.reply('❌ Akses ditolak.');
@@ -131,7 +135,7 @@ bot.command('broadcast', async (ctx) => {
 
     for (const userId of users) {
         try {
-            await ctx.telegram.sendMessage(userId, `\n\n${broadcastMessage}`, { parse_mode: 'Markdown' });
+            await ctx.telegram.sendMessage(userId, `📢 **PENGUMUMAN ADMIN**\n\n${broadcastMessage}`, { parse_mode: 'Markdown' });
             successCount++;
             await new Promise(resolve => setTimeout(resolve, 40)); 
         } catch (e) { failCount++; }
@@ -139,6 +143,9 @@ bot.command('broadcast', async (ctx) => {
     await ctx.reply(`✅ Selesai!\n- Berhasil: ${successCount}\n- Gagal/Blokir: ${failCount}`);
 });
 
+// ==========================================
+// MIDDLEWARE: CEK JOIN CHANNEL & REKAM USER
+// ==========================================
 bot.use(async (ctx, next) => {
     if (!ctx.from) return next();
     saveUser(ctx.from.id);
@@ -150,7 +157,7 @@ bot.use(async (ctx, next) => {
             [Markup.button.url('📢 Gabung Channel Dulu', CHANNEL_LINK)],
             [Markup.button.callback('🔄 Saya Sudah Bergabung', 'check_join')]
         ]);
-        const warningText = `⚠️ **AKSES DITOLAK!**\n\nUntuk menikmati layanan VLESS gratis, silakan bergabung ke channel kami.`;
+        const warningText = `⚠️ **AKSES DITOLAK!**\n\nUntuk menikmati layanan VLESS gratis, silakan bergabung ke channel kami terlebih dahulu.`;
         if (ctx.callbackQuery) {
             return ctx.answerCbQuery('Anda belum bergabung ke channel!', { show_alert: true }).catch(()=>{});
         }
@@ -164,12 +171,15 @@ bot.action('check_join', async (ctx) => {
     if (isJoined) {
         await ctx.answerCbQuery('Terima kasih sudah bergabung!', { show_alert: true }).catch(()=>{});
         const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🚀 Create Account VLESS', 'select_domain')]]);
-        await ctx.editMessageText(`Selamat datang di layanan akun VLESS gratis!\n\nSilakan tekan tombol di bawah:`, { parse_mode: 'Markdown', ...keyboard }).catch(()=>{});
+        await ctx.editMessageText(`Selamat datang di layanan akun VLESS gratis!\n\nSilakan tekan tombol di bawah untuk membuat akun VLESS:`, { parse_mode: 'Markdown', ...keyboard }).catch(()=>{});
     } else {
         await ctx.answerCbQuery('❌ Anda belum bergabung ke channel!', { show_alert: true }).catch(()=>{});
     }
 });
 
+// ==========================================
+// MENU UTAMA / START
+// ==========================================
 bot.start(async (ctx) => {
     const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🚀 Create Account VLESS', 'select_domain')]]);
     const welcomeText = `
@@ -301,8 +311,15 @@ bugList.forEach(bug => {
     });
 });
 
+// ==========================================
+// GENERATOR CONFIG VLESS & NOTIFIKASI ADMIN
+// ==========================================
 async function generateAndSendVless(ctx) {
     const session = userSession[ctx.from.id];
+    if (!session || !session.domain) {
+        return ctx.reply('⚠️ Sesi atau domain tidak ditemukan. Silakan ketik /start ulang.');
+    }
+
     const countryData = dataServer[session.country];
     const prov = session.provider;
     const selectedDomain = session.domain;
@@ -317,15 +334,16 @@ async function generateAndSendVless(ctx) {
     let modeTitle = 'DOMAIN ONLY';
 
     if (session.mode === 'sni') {
+        targetHost = selectedDomain;
         sniValue = `${session.bug.host}.${selectedDomain}`;
-        modeTitle = `SNI/SSL (${session.bug.host})`;
+        modeTitle = `SNI/SSL (${session.bug.name})`;
     } else if (session.mode === 'wildcard') {
         targetHost = session.bug.host;
         sniValue = `${session.bug.host}.${selectedDomain}`;
-        modeTitle = `WILDCARD (${session.bug.host})`;
+        modeTitle = `WILDCARD (${session.bug.name})`;
     }
 
-    const configLink = `vless://${uuid}@${targetHost}:443?encryption=none&type=ws&host=${sniValue}&headerType=none&path=${encodeURIComponent(pathValue)}&security=tls&sni=${sniValue}#${encodedName}`;
+    const configLink = `vless://${uuid}@${targetHost}:443?encryption=none&type=ws&host=${sniValue}&headerType=none&path=${pathValue}&security=tls&sni=${sniValue}#${encodedName}`;
 
     const resultText = `
 ╔═════════════════╗
@@ -351,9 +369,7 @@ async function generateAndSendVless(ctx) {
     const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🔄 Buat Lagi', 'select_domain')]]);
     await ctx.editMessageText(resultText, { parse_mode: 'Markdown', ...keyboard }).catch(()=>{});
 
-    // ==========================================
-    // NOTIFIKASI KE ADMIN
-    // ==========================================
+    // Kirim Notifikasi ke Admin secara otomatis
     try {
         const user = ctx.from;
         const name = user.first_name + (user.last_name ? ' ' + user.last_name : '');
@@ -384,4 +400,4 @@ console.log('Bot VLESS Berjalan Sempurna...');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-                
+            
