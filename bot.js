@@ -1,15 +1,33 @@
 const { Telegraf, Markup } = require('telegraf');
 const crypto = require('crypto');
+const fs = require('fs');
 
 // Ganti 'TOKEN_BOT_ANDA_DISINI' dengan token asli dari BotFather
 const BOT_TOKEN = "8475657676:AAGaMNm1fAExcSLytKWESmx5gUcWOe4KGIs";
+const ADMIN_ID = 6161529489; // Ganti dengan ID Telegram Anda agar bisa pakai /broadcast
 const bot = new Telegraf(BOT_TOKEN);
+const USERS_FILE = 'users.json';
 
 const DOMAIN = 'vlez.eu.cc';
 
 // MASUKKAN USERNAME CHANNEL ANDA DI SINI (Pastikan bot jadi Admin di channel tersebut)
-const CHANNEL_USERNAME = '@vlazz🚀'; 
+const CHANNEL_USERNAME = '@vlazxz'; // Pastikan formatnya berawalan @ tanpa emoji
 const CHANNEL_LINK = 'https://t.me/vlazxz'; // Link invite channel Anda
+
+// Fungsi rekam ID user otomatis
+function saveUser(userId) {
+    let users = [6161529489];
+    try {
+        if (fs.existsSync(USERS_FILE)) {
+            const data = fs.readFileSync(USERS_FILE);
+            users = JSON.parse(data);
+        }
+        if (!users.includes(userId)) {
+            users.push(userId);
+            fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+        }
+    } catch (e) {}
+}
 
 // Daftar Bug Host
 const bugList = [
@@ -18,8 +36,7 @@ const bugList = [
     { id: 'bug3', name: ' media-sin6-3.cdn.whatsapp.net', host: 'media-sin6-3.cdn.whatsapp.net' },
     { id: 'bug4', name: ' listen.noice.id', host: 'listen.noice.id' },
     { id: 'bug5', name: ' api24-normal.tiktokv.com', host: 'api24-normal.tiktokv.com' },
-    { id: 'bug6', name: ' graph.instagram.com', host: 'graph.instagram.com' },
-    
+    { id: 'bug6', name: ' graph.instagram.com', host: 'graph.instagram.com' }
 ];
 
 const dataServer = {
@@ -52,7 +69,22 @@ const dataServer = {
     }
 };
 
-// Fungsi ambil UUID (menggunakan fetch bawaan Node.js / crypto fallback)
+// Fungsi Cek Membership Channel
+async function checkMembership(ctx) {
+    try {
+        const userId = ctx.from.id;
+        const chatMember = await ctx.telegram.getChatMember(CHANNEL_USERNAME, userId);
+        const allowedStatuses = ['creator', 'administrator', 'member'];
+        if (allowedStatuses.includes(chatMember.status)) {
+            return true;
+        }
+    } catch (error) {
+        console.log("Gagal cek membership:", error.message);
+    }
+    return false;
+}
+
+// Fungsi ambil UUID
 async function getUuid() {
     try {
         const response = await fetch('https://www.uuidgenerator.net/');
@@ -64,6 +96,81 @@ async function getUuid() {
 }
 
 const userSession = {};
+
+// ==========================================
+// FITUR BROADCAST LANGSUNG DI CHAT TELEGRAM
+// ==========================================
+bot.command('broadcast', async (ctx) => {
+    if (ctx.from.id !== 6161529489) {
+        return ctx.reply('❌ Anda tidak memiliki izin untuk menggunakan perintah ini.');
+    }
+
+    const broadcastMessage = ctx.message.text.split(' ').slice(1).join(' ');
+    if (!broadcastMessage) {
+        return ctx.reply('⚠️ Format salah!\nGunakan contoh: /broadcast Halo, server sudah diperbarui!');
+    }
+
+    if (!fs.existsSync(USERS_FILE)) {
+        return ctx.reply('⚠️ Belum ada database user (`users.json`).');
+    }
+
+    const users = JSON.parse(fs.readFileSync(USERS_FILE));
+    let successCount = 0;
+    let failCount = 0;
+
+    await ctx.reply(`📢 Memulai broadcast ke ${users.length} pengguna...`);
+
+    for (const userId of users) {
+        try {
+            await ctx.telegram.sendMessage(userId, `\n\n${broadcastMessage}`, { parse_mode: 'Markdown' });
+            successCount++;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        } catch (e) {
+            failCount++;
+        }
+    }
+
+    await ctx.reply(`✅ **Broadcast Selesai!**\n- Berhasil terkirim: ${successCount}\n- Gagal / Block bot: ${failCount}`);
+});
+
+// Middleware Wajib Join Channel & Rekam User
+bot.use(async (ctx, next) => {
+    if (!ctx.from) return next();
+    
+    // Simpan ID user secara otomatis
+    saveUser(ctx.from.id);
+
+    if (ctx.callbackQuery && ctx.callbackQuery.data === 'check_join') return next();
+
+    const isJoined = await checkMembership(ctx);
+    if (!isJoined) {
+        const joinKeyboard = Markup.inlineKeyboard([
+            [Markup.button.url('📢 Gabung Channel Dulu', CHANNEL_LINK)],
+            [Markup.button.callback('🔄 Saya Sudah Bergabung', 'check_join')]
+        ]);
+
+        const warningText = `⚠️ **AKSES DITOLAK!**\n\nUntuk menikmati layanan VLESS gratis, silakan bergabung ke channel kami terlebih dahulu.`;
+        
+        if (ctx.callbackQuery) {
+            return ctx.answerCbQuery('Anda belum bergabung ke channel!', { show_alert: true });
+        }
+        return ctx.reply(warningText, { parse_mode: 'Markdown', ...joinKeyboard });
+    }
+    return next();
+});
+
+bot.action('check_join', async (ctx) => {
+    const isJoined = await checkMembership(ctx);
+    if (isJoined) {
+        await ctx.answerCbQuery('Terima kasih sudah bergabung!', { show_alert: true });
+        const keyboard = Markup.inlineKeyboard([
+            [Markup.button.callback('🚀 Create Account VLESS', 'select_country')]
+        ]);
+        await ctx.editMessageText(`Selamat datang di layanan akun VLESS gratis!\n\nSilakan tekan tombol di bawah untuk membuat akun VLESS:`, { parse_mode: 'Markdown', ...keyboard });
+    } else {
+        await ctx.answerCbQuery('❌ Anda belum bergabung ke channel!', { show_alert: true });
+    }
+});
 
 bot.start(async (ctx) => {
     const keyboard = Markup.inlineKeyboard([
