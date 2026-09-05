@@ -11,7 +11,6 @@ const USERS_FILE = 'users.json';
 
 // ==========================================
 // SERVER HTTP UNTUK RAILWAY (WAJIB)
-// Agar kontainer Railway tidak dimatikan
 // ==========================================
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => {
@@ -35,7 +34,6 @@ const CHANNEL_USERNAME = '@vlazxz';
 const CHANNEL_LINK = 'https://t.me/vlazxz'; 
 
 // Fungsi rekam ID user 
-// (Catatan: Data ini akan reset jika Railway melakukan redeploy/restart)
 function saveUser(userId) {
     let users = [ADMIN_ID];
     try {
@@ -310,7 +308,7 @@ async function generateAndSendVless(ctx) {
     const selectedDomain = session.domain;
 
     const uuid = getUuid(); 
-    const pathValue = prov.path ? prov.path : `/${prov.proxy}`;
+    const pathValue = prov.path ? prov.path : `/%2F${prov.proxy}`;
     const accountName = `${session.country}-${prov.name} ${countryData.flag}`;
     const encodedName = encodeURIComponent(accountName);
 
@@ -352,6 +350,28 @@ async function generateAndSendVless(ctx) {
 
     const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🔄 Buat Lagi', 'select_domain')]]);
     await ctx.editMessageText(resultText, { parse_mode: 'Markdown', ...keyboard }).catch(()=>{});
+
+    // ==========================================
+    // NOTIFIKASI KE ADMIN
+    // ==========================================
+    try {
+        const user = ctx.from;
+        const name = user.first_name + (user.last_name ? ' ' + user.last_name : '');
+        const username = user.username ? `@${user.username}` : 'Tanpa Username';
+        
+        const notifText = `🔔 **NOTIFIKASI: AKUN BARU DIBUAT!**\n\n` +
+                          `👤 Nama: ${name}\n` +
+                          `🔗 Username: ${username}\n` +
+                          `🆔 ID: \`${user.id}\`\n` +
+                          `🌐 Domain: ${selectedDomain}\n` +
+                          `🌍 Negara: ${countryData.flag} ${countryData.name}\n` +
+                          `🏢 ISP: ${prov.name}\n` +
+                          `⚙️ Mode: ${modeTitle}`;
+
+        await bot.telegram.sendMessage(ADMIN_ID, notifText, { parse_mode: 'Markdown' });
+    } catch (e) {
+        console.log("Gagal mengirim notifikasi ke admin:", e.message);
+    }
 }
 
 bot.action('back_home', async (ctx) => {
@@ -364,3 +384,4 @@ console.log('Bot VLESS Berjalan Sempurna...');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+                
