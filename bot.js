@@ -135,7 +135,7 @@ bot.command('broadcast', async (ctx) => {
 
     for (const userId of users) {
         try {
-            await ctx.telegram.sendMessage(userId, `📢 **PENGUMUMAN ADMIN**\n\n${broadcastMessage}`, { parse_mode: 'Markdown' });
+            await ctx.telegram.sendMessage(userId, `\n\n${broadcastMessage}`, { parse_mode: 'Markdown' });
             successCount++;
             await new Promise(resolve => setTimeout(resolve, 40)); 
         } catch (e) { failCount++; }
