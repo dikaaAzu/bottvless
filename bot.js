@@ -6,7 +6,7 @@ const http = require('http');
 // ==========================================
 // PENGATURAN UTAMA BOT
 // ==========================================
-const BOT_TOKEN = "8475657676:AAGaMNm1fAExcSLytKWESmx5gUcWOe4KGIs";
+const BOT_TOKEN = "8475657676:AAF7SVtg-PhIXmID9CYSDQkyH8H2UvFcskw";
 const ADMIN_ID = 6161529489; 
 const bot = new Telegraf(BOT_TOKEN);
 
