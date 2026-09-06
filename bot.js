@@ -1,14 +1,15 @@
 const { Telegraf, Markup } = require('telegraf');
 const crypto = require('crypto');
 const fs = require('fs');
-const http = require('http'); // Wajib untuk server keep-alive di Railway
+const http = require('http');
 
 // ==========================================
 // PENGATURAN UTAMA BOT
 // ==========================================
-const BOT_TOKEN = "8475657676:AAF7SVtg-PhIXmID9CYSDQkyH8H2UvFcskw";
-const ADMIN_ID = 6161529489; // ID Telegram Anda (untuk akses /broadcast & notifikasi)
+const BOT_TOKEN = "8475657676:AAGaMNm1fAExcSLytKWESmx5gUcWOe4KGIs";
+const ADMIN_ID = 6161529489; 
 const bot = new Telegraf(BOT_TOKEN);
+
 const USERS_FILE = 'users.json';
 const BUGS_FILE = 'bugs.json';
 
@@ -25,14 +26,24 @@ http.createServer((req, res) => {
 });
 
 // ==========================================
-// PENGATURAN DOMAIN & DATABASE LOKAL (ANTI-CRASH)
+// PENGATURAN DOMAIN & DATABASE LOKAL AMAN
 // ==========================================
 const domainList = [
     'vlez.eu.cc',
     'vlzxr.eu.cc',
 ];
 
-// Fungsi Aman Rekam User
+// Daftar Bug Host Default
+const defaultBugList = [
+    { id: 'bug1', name: 'ava.game.naver.com', host: 'ava.game.naver.com' },
+    { id: 'bug2', name: 'support.zoom.us', host: 'support.zoom.us' },
+    { id: 'bug3', name: 'media-sin6-3.cdn.whatsapp.net', host: 'media-sin6-3.cdn.whatsapp.net' },
+    { id: 'bug4', name: 'listen.noice.id', host: 'listen.noice.id' },
+    { id: 'bug5', name: 'api24-normal.tiktokv.com', host: 'api24-normal.tiktokv.com' },
+    { id: 'bug6', name: 'graph.instagram.com', host: 'graph.instagram.com' }
+];
+
+// Fungsi Aman Rekam User (Tanpa Crash)
 function saveUser(userId) {
     try {
         let users = [ADMIN_ID];
@@ -47,21 +58,11 @@ function saveUser(userId) {
             fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
         }
     } catch (e) {
-        console.log("Catatan sistem (users):", e.message);
+        console.log("Log sistem (users):", e.message);
     }
 }
 
-// Daftar Bug Host Default
-const defaultBugList = [
-    { id: 'bug1', name: 'ava.game.naver.com', host: 'ava.game.naver.com' },
-    { id: 'bug2', name: 'support.zoom.us', host: 'support.zoom.us' },
-    { id: 'bug3', name: 'media-sin6-3.cdn.whatsapp.net', host: 'media-sin6-3.cdn.whatsapp.net' },
-    { id: 'bug4', name: 'listen.noice.id', host: 'listen.noice.id' },
-    { id: 'bug5', name: 'api24-normal.tiktokv.com', host: 'api24-normal.tiktokv.com' },
-    { id: 'bug6', name: 'graph.instagram.com', host: 'graph.instagram.com' }
-];
-
-// Fungsi Aman Memuat Bug List
+// Fungsi Aman Memuat Bug List (Tanpa Crash)
 function getBugList() {
     try {
         if (fs.existsSync(BUGS_FILE)) {
@@ -72,7 +73,7 @@ function getBugList() {
         }
         fs.writeFileSync(BUGS_FILE, JSON.stringify(defaultBugList, null, 2));
     } catch (e) {
-        console.log("Catatan sistem (bugs):", e.message);
+        console.log("Log sistem (bugs):", e.message);
     }
     return defaultBugList;
 }
@@ -104,7 +105,6 @@ const dataServer = {
     }
 };
 
-// Fungsi Ambil UUID
 function getUuid() {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
         return crypto.randomUUID();
@@ -129,76 +129,55 @@ function checkSession(ctx) {
 // FITUR /ADDWC (TAMBAH BUG & CLOUDFLARE API)
 // ==========================================
 bot.command('addwc', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) {
-        return ctx.reply('❌ Akses ditolak! Perintah ini khusus untuk Admin.');
-    }
+    if (ctx.from.id !== ADMIN_ID) return ctx.reply('❌ Akses ditolak!');
 
     try {
         const args = ctx.message.text.split(' ').slice(1);
-        const bugId = args[0];   // Contoh: bug7
-        const bugHost = args[1]; // Contoh: sub.domainanda.com
+        const bugId = args[0];
+        const bugHost = args[1];
 
         if (!bugId || !bugHost) {
-            return ctx.reply(
-                '⚠️ **Format Salah!**\n\n' +
-                'Gunakan format berikut:\n' +
-                '`/addwc <id_unik> <domain_anda.com>`\n\n' +
-                'Contoh:\n' +
-                '`/addwc bug7 sub.domainanda.com`',
-                { parse_mode: 'Markdown' }
-            );
+            return ctx.reply('⚠️ Format Salah!\nGunakan: `/addwc <id_unik> <domain.com>`', { parse_mode: 'Markdown' });
         }
 
         let currentBugList = getBugList();
-        const existingBug = currentBugList.find(b => b.id === bugId);
-        if (existingBug) {
-            return ctx.reply(`⚠️ Gagal: ID Bug \`${bugId}\` sudah terdaftar di sistem! Gunakan ID lain.`, { parse_mode: 'Markdown' });
+        if (currentBugList.some(b => b.id === bugId)) {
+            return ctx.reply(`⚠️ Gagal: ID Bug \`${bugId}\` sudah terdaftar!`, { parse_mode: 'Markdown' });
         }
 
-        await ctx.reply(`🔄 Sedang mendaftarkan domain \`${bugHost}\` ke Cloudflare Worker...`, { parse_mode: 'Markdown' });
+        const CF_TOKEN = process.env.CF_API_TOKEN; 
+        const CF_ACC = process.env.CF_ACCOUNT_ID;
+        const CF_WORKER = process.env.CF_WORKER_NAME;
 
-        const CLOUDFLARE_API_TOKEN = process.env.CF_API_TOKEN; 
-        const CLOUDFLARE_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
-        const WORKER_NAME = process.env.CF_WORKER_NAME;
-
-        if (!CLOUDFLARE_API_TOKEN || !CLOUDFLARE_ACCOUNT_ID || !WORKER_NAME) {
-            return ctx.reply('❌ Gagal: Variabel environment Cloudflare (CF_API_TOKEN, CF_ACCOUNT_ID, CF_WORKER_NAME) belum disetel di Railway!');
+        if (!CF_TOKEN || !CF_ACC || !CF_WORKER) {
+            return ctx.reply('❌ Variabel Environment Cloudflare (CF_API_TOKEN, CF_ACCOUNT_ID, CF_WORKER_NAME) belum lengkap di Railway!');
         }
 
-        const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/domains`, {
+        await ctx.reply(`🔄 Mendaftarkan \`${bugHost}\` ke Cloudflare Worker...`, { parse_mode: 'Markdown' });
+
+        const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACC}/workers/scripts/${CF_WORKER}/domains`, {
             method: 'PUT',
             headers: {
-                'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                'Authorization': `Bearer ${CF_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 environment: 'production',
                 hostname: bugHost,
-                service: WORKER_NAME
+                service: CF_WORKER
             })
         });
 
         const cfResult = await response.json();
-
         if (!cfResult.success) {
-            const errorMsg = cfResult.errors?.[0]?.message || 'Gagal terhubung ke Cloudflare API';
-            return ctx.reply(`❌ Gagal mendaftarkan ke Cloudflare: ${errorMsg}`);
+            const errText = cfResult.errors?.[0]?.message || 'Gagal menghubungi Cloudflare API';
+            return ctx.reply(`❌ Gagal Cloudflare: ${errText}`);
         }
 
-        currentBugList.push({
-            id: bugId,
-            name: bugHost,
-            host: bugHost
-        });
+        currentBugList.push({ id: bugId, name: bugHost, host: bugHost });
         fs.writeFileSync(BUGS_FILE, JSON.stringify(currentBugList, null, 2));
 
-        await ctx.reply(
-            `✅ **Berhasil Menambahkan Domain Worker!**\n\n` +
-            `🆔 ID: \`${bugId}\`\n` +
-            `🌐 Domain: \`${bugHost}\`\n\n` +
-            `Domain tersimpan permanen dan otomatis masuk ke menu bot.`,
-            { parse_mode: 'Markdown' }
-        );
+        await ctx.reply(`✅ Berhasil menambahkan dan mendaftarkan domain \`${bugHost}\`!`, { parse_mode: 'Markdown' });
     } catch (err) {
         console.error("Error /addwc:", err);
         await ctx.reply('❌ Terjadi kesalahan internal saat memproses /addwc.');
@@ -209,23 +188,14 @@ bot.command('addwc', async (ctx) => {
 // FITUR /DELWC (HAPUS BUG & CLOUDFLARE API)
 // ==========================================
 bot.command('delwc', async (ctx) => {
-    if (ctx.from.id !== ADMIN_ID) {
-        return ctx.reply('❌ Akses ditolak! Perintah ini khusus untuk Admin.');
-    }
+    if (ctx.from.id !== ADMIN_ID) return ctx.reply('❌ Akses ditolak!');
 
     try {
         const args = ctx.message.text.split(' ').slice(1);
-        const bugId = args[0]; // Contoh: bug7
+        const bugId = args[0];
 
         if (!bugId) {
-            return ctx.reply(
-                '⚠️ **Format Salah!**\n\n' +
-                'Gunakan format berikut:\n' +
-                '`/delwc <id_unik>`\n\n' +
-                'Contoh:\n' +
-                '`/delwc bug7`',
-                { parse_mode: 'Markdown' }
-            );
+            return ctx.reply('⚠️ Format Salah!\nGunakan: `/delwc <id_unik>`', { parse_mode: 'Markdown' });
         }
 
         let currentBugList = getBugList();
@@ -235,20 +205,20 @@ bot.command('delwc', async (ctx) => {
             return ctx.reply(`⚠️ Gagal: ID Bug \`${bugId}\` tidak ditemukan di database bot!`, { parse_mode: 'Markdown' });
         }
 
-        await ctx.reply(`🔄 Sedang menghapus domain \`${targetBug.host}\` dari Cloudflare Worker...`, { parse_mode: 'Markdown' });
+        const CF_TOKEN = process.env.CF_API_TOKEN; 
+        const CF_ACC = process.env.CF_ACCOUNT_ID;
+        const CF_WORKER = process.env.CF_WORKER_NAME;
 
-        const CLOUDFLARE_API_TOKEN = process.env.CF_API_TOKEN; 
-        const CLOUDFLARE_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
-        const WORKER_NAME = process.env.CF_WORKER_NAME;
-
-        if (!CLOUDFLARE_API_TOKEN || !CLOUDFLARE_ACCOUNT_ID || !WORKER_NAME) {
-            return ctx.reply('❌ Gagal: Variabel environment Cloudflare belum disetel di Railway!');
+        if (!CF_TOKEN || !CF_ACC || !CF_WORKER) {
+            return ctx.reply('❌ Variabel Environment Cloudflare belum lengkap di Railway!');
         }
 
-        await fetch(`https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/domains/${targetBug.host}`, {
+        await ctx.reply(`🔄 Menghapus \`${targetBug.host}\` dari Cloudflare...`, { parse_mode: 'Markdown' });
+
+        await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACC}/workers/scripts/${CF_WORKER}/domains/${targetBug.host}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                'Authorization': `Bearer ${CF_TOKEN}`,
                 'Content-Type': 'application/json'
             }
         }).catch(e => console.log("Catatan API Delete:", e.message));
@@ -256,13 +226,7 @@ bot.command('delwc', async (ctx) => {
         const updatedBugList = currentBugList.filter(b => b.id !== bugId);
         fs.writeFileSync(BUGS_FILE, JSON.stringify(updatedBugList, null, 2));
 
-        await ctx.reply(
-            `✅ **Berhasil Menghapus Bug / Domain!**\n\n` +
-            `🆔 ID: \`${bugId}\`\n` +
-            `🌐 Domain: \`${targetBug.host}\`\n\n` +
-            `Domain telah dihapus dari Cloudflare Worker dan menu bot.`,
-            { parse_mode: 'Markdown' }
-        );
+        await ctx.reply(`✅ Berhasil menghapus bug ID: \`${bugId}\` (\`${targetBug.host}\`)!`, { parse_mode: 'Markdown' });
     } catch (err) {
         console.error("Error /delwc:", err);
         await ctx.reply('❌ Terjadi kesalahan internal saat memproses /delwc.');
@@ -320,7 +284,6 @@ Selamat datang di layanan akun VLESS gratis!
 :: SYSTEM INFO ————————
 ├ Status  : ONLINE (VLESS ONLY)
 ├ owner   : @heyyybangsyadd
-├ Join CH : @vlazxz
 
 Silakan tekan tombol di bawah untuk membuat akun VLESS:
     `;
@@ -447,9 +410,6 @@ bot.action(/^bug_(.+)$/, async (ctx) => {
     await generateAndSendVless(ctx);
 });
 
-// ==========================================
-// GENERATOR CONFIG VLESS & NOTIFIKASI ADMIN
-// ==========================================
 async function generateAndSendVless(ctx) {
     const session = userSession[ctx.from.id];
     if (!session || !session.domain) {
@@ -519,4 +479,28 @@ async function generateAndSendVless(ctx) {
                           `🏢 ISP: ${prov.name}\n` +
                           `⚙️ Mode: ${modeTitle}`;
 
-        await bot.telegram.sendMessage(ADMIN_ID, notifText, { parse_mode: 
+        await bot.telegram.sendMessage(ADMIN_ID, notifText, { parse_mode: 'Markdown' });
+    } catch (e) {
+        console.log("Gagal mengirim notifikasi ke admin:", e.message);
+    }
+}
+
+bot.action('back_home', async (ctx) => {
+    const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🚀 Create Account VLESS', 'select_domain')]]);
+    await ctx.editMessageText('Silakan tekan tombol di bawah untuk membuat akun VLESS:', { parse_mode: 'Markdown', ...keyboard }).catch(()=>{});
+});
+
+// Penanganan Global Error Agar Bot Tidak Pernah Crash
+process.on('uncaughtException', (err) => {
+    console.error('Terdeteksi Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Terdeteksi Unhandled Rejection:', reason);
+});
+
+bot.launch();
+console.log('Bot VLESS Berjalan Sempurna Tanpa Crash...');
+
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
