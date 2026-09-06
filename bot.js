@@ -51,7 +51,7 @@ function saveUser(userId) {
     }
 }
 
-// Daftar Bug Host
+// Daftar Bug Host (Dapat ditambah otomatis via /addwc)
 const bugList = [
     { id: 'bug1', name: 'ava.game.naver.com', host: 'ava.game.naver.com' },
     { id: 'bug2', name: 'support.zoom.us', host: 'support.zoom.us' },
@@ -119,6 +119,88 @@ function checkSession(ctx) {
     }
     return true;
 }
+
+// ==========================================
+// FITUR /ADDWC (ADMIN ONLY + CLOUDFLARE API)
+// ==========================================
+bot.command('addwc', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) {
+        return ctx.reply('❌ Akses ditolak! Perintah ini khusus untuk Admin.');
+    }
+
+    const args = ctx.message.text.split(' ').slice(1);
+    const bugId = args[0];   // Contoh: bug7
+    const bugHost = args[1]; // Contoh: sub.domainanda.com
+
+    if (!bugId || !bugHost) {
+        return ctx.reply(
+            '⚠️ **Format Salah!**\n\n' +
+            'Gunakan format berikut:\n' +
+            '`/addwc <id_unik> <domain_anda.com>`\n\n' +
+            'Contoh:\n' +
+            '`/addwc bug7 sub.domainanda.com`',
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    // Cek apakah ID bug sudah ada di memori
+    const existingBug = bugList.find(b => b.id === bugId);
+    if (existingBug) {
+        return ctx.reply(`⚠️ Gagal: ID Bug \`${bugId}\` sudah terdaftar di sistem! Gunakan ID lain.`, { parse_mode: 'Markdown' });
+    }
+
+    await ctx.reply(`🔄 Sedang mendaftarkan domain \`${bugHost}\` ke Cloudflare Worker...`, { parse_mode: 'Markdown' });
+
+    try {
+        const CLOUDFLARE_API_TOKEN = process.env.CF_API_TOKEN; 
+        const CLOUDFLARE_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
+        const WORKER_NAME = process.env.CF_WORKER_NAME;
+
+        if (!CLOUDFLARE_API_TOKEN || !CLOUDFLARE_ACCOUNT_ID || !WORKER_NAME) {
+            return ctx.reply('❌ Gagal: Variabel environment Cloudflare (CF_API_TOKEN, CF_ACCOUNT_ID, CF_WORKER_NAME) belum disetel di Railway!');
+        }
+
+        // Kirim Request ke Cloudflare API untuk menambahkan Custom Domain ke Worker
+        const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/domains`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                environment: 'production',
+                hostname: bugHost,
+                service: WORKER_NAME
+            })
+        });
+
+        const cfResult = await response.json();
+
+        if (!cfResult.success) {
+            const errorMsg = cfResult.errors?.[0]?.message || 'Gagal terhubung ke Cloudflare API';
+            return ctx.reply(`❌ Gagal mendaftarkan ke Cloudflare: ${errorMsg}`);
+        }
+
+        // Jika sukses di Cloudflare, tambahkan juga ke menu bot secara dinamis
+        bugList.push({
+            id: bugId,
+            name: bugHost,
+            host: bugHost
+        });
+
+        await ctx.reply(
+            `✅ **Berhasil Menambahkan Domain Worker!**\n\n` +
+            `🆔 ID: \`${bugId}\`\n` +
+            `🌐 Domain: \`${bugHost}\`\n\n` +
+            `Domain telah terdaftar di Cloudflare Worker dan otomatis masuk ke menu bot.`,
+            { parse_mode: 'Markdown' }
+        );
+
+    } catch (error) {
+        console.error(error);
+        await ctx.reply(`❌ Terjadi kesalahan sistem saat menghubungi server Cloudflare.`);
+    }
+});
 
 // ==========================================
 // FITUR BROADCAST ADMIN
@@ -303,12 +385,18 @@ async function showBugMenu(ctx) {
     }).catch(()=>{});
 }
 
-bugList.forEach(bug => {
-    bot.action(`bug_${bug.id}`, async (ctx) => {
-        if (!checkSession(ctx)) return;
-        userSession[ctx.from.id].bug = bug;
-        await generateAndSendVless(ctx);
-    });
+// Handler dinamis untuk menangani bug bawaan maupun bug baru dari /addwc
+bot.action(/^bug_(.+)$/, async (ctx) => {
+    if (!checkSession(ctx)) return;
+    const bugId = ctx.match[1];
+    const selectedBug = bugList.find(b => b.id === bugId);
+
+    if (!selectedBug) {
+        return ctx.answerCbQuery('⚠️ Bug host tidak ditemukan!', { show_alert: true });
+    }
+
+    userSession[ctx.from.id].bug = selectedBug;
+    await generateAndSendVless(ctx);
 });
 
 // ==========================================
@@ -400,4 +488,4 @@ console.log('Bot VLESS Berjalan Sempurna...');
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-            
+        
