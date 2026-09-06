@@ -1,1 +1,9 @@
+[
+  { "id": "bug1", "name": "ava.game.naver.com", "host": "ava.game.naver.com" },
+  { "id": "bug2", "name": "support.zoom.us", "host": "support.zoom.us" },
+  { "id": "bug3", "name": "media-sin6-3.cdn.whatsapp.net", "host": "media-sin6-3.cdn.whatsapp.net" },
+  { "id": "bug4", "name": "listen.noice.id", "host": "listen.noice.id" },
+  { "id": "bug5", "name": "api24-normal.tiktokv.com", "host": "api24-normal.tiktokv.com" },
+  { "id": "bug6", "name": "graph.instagram.com", "host": "graph.instagram.com" }
+]
 
