@@ -10,6 +10,7 @@ const BOT_TOKEN = "8475657676:AAGaMNm1fAExcSLytKWESmx5gUcWOe4KGIs";
 const ADMIN_ID = 6161529489; // ID Telegram Anda (untuk akses /broadcast & notifikasi)
 const bot = new Telegraf(BOT_TOKEN);
 const USERS_FILE = 'users.json';
+const BUGS_FILE = 'bugs.json'; // File database untuk menyimpan bug/wildcard permanen
 
 // ==========================================
 // SERVER HTTP KEEP-ALIVE UNTUK RAILWAY
@@ -51,8 +52,8 @@ function saveUser(userId) {
     }
 }
 
-// Daftar Bug Host (Dapat ditambah otomatis via /addwc)
-const bugList = [
+// Daftar Bug Host Default
+const defaultBugList = [
     { id: 'bug1', name: 'ava.game.naver.com', host: 'ava.game.naver.com' },
     { id: 'bug2', name: 'support.zoom.us', host: 'support.zoom.us' },
     { id: 'bug3', name: 'media-sin6-3.cdn.whatsapp.net', host: 'media-sin6-3.cdn.whatsapp.net' },
@@ -60,6 +61,21 @@ const bugList = [
     { id: 'bug5', name: 'api24-normal.tiktokv.com', host: 'api24-normal.tiktokv.com' },
     { id: 'bug6', name: 'graph.instagram.com', host: 'graph.instagram.com' }
 ];
+
+// Fungsi Memuat Bug List dari File (Agar tidak hilang saat restart)
+function getBugList() {
+    try {
+        if (fs.existsSync(BUGS_FILE)) {
+            const data = fs.readFileSync(BUGS_FILE, 'utf8');
+            if (data) return JSON.parse(data);
+        } else {
+            fs.writeFileSync(BUGS_FILE, JSON.stringify(defaultBugList, null, 2));
+        }
+    } catch (e) {
+        console.log("Gagal membaca bugs.json:", e.message);
+    }
+    return defaultBugList;
+}
 
 const dataServer = {
     'ID': {
@@ -121,7 +137,7 @@ function checkSession(ctx) {
 }
 
 // ==========================================
-// FITUR /ADDWC (ADMIN ONLY + CLOUDFLARE API)
+// FITUR /ADDWC (TAMBAH BUG & CLOUDFLARE API)
 // ==========================================
 bot.command('addwc', async (ctx) => {
     if (ctx.from.id !== ADMIN_ID) {
@@ -143,8 +159,8 @@ bot.command('addwc', async (ctx) => {
         );
     }
 
-    // Cek apakah ID bug sudah ada di memori
-    const existingBug = bugList.find(b => b.id === bugId);
+    let currentBugList = getBugList();
+    const existingBug = currentBugList.find(b => b.id === bugId);
     if (existingBug) {
         return ctx.reply(`⚠️ Gagal: ID Bug \`${bugId}\` sudah terdaftar di sistem! Gunakan ID lain.`, { parse_mode: 'Markdown' });
     }
@@ -160,7 +176,6 @@ bot.command('addwc', async (ctx) => {
             return ctx.reply('❌ Gagal: Variabel environment Cloudflare (CF_API_TOKEN, CF_ACCOUNT_ID, CF_WORKER_NAME) belum disetel di Railway!');
         }
 
-        // Kirim Request ke Cloudflare API untuk menambahkan Custom Domain ke Worker
         const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/domains`, {
             method: 'PUT',
             headers: {
@@ -181,18 +196,87 @@ bot.command('addwc', async (ctx) => {
             return ctx.reply(`❌ Gagal mendaftarkan ke Cloudflare: ${errorMsg}`);
         }
 
-        // Jika sukses di Cloudflare, tambahkan juga ke menu bot secara dinamis
-        bugList.push({
+        currentBugList.push({
             id: bugId,
             name: bugHost,
             host: bugHost
         });
+        fs.writeFileSync(BUGS_FILE, JSON.stringify(currentBugList, null, 2));
 
         await ctx.reply(
             `✅ **Berhasil Menambahkan Domain Worker!**\n\n` +
             `🆔 ID: \`${bugId}\`\n` +
             `🌐 Domain: \`${bugHost}\`\n\n` +
-            `Domain telah terdaftar di Cloudflare Worker dan otomatis masuk ke menu bot.`,
+            `Domain tersimpan permanen dan otomatis masuk ke menu bot.`,
+            { parse_mode: 'Markdown' }
+        );
+
+    } catch (error) {
+        console.error(error);
+        await ctx.reply(`❌ Terjadi kesalahan sistem saat menghubungi server Cloudflare.`);
+    }
+});
+
+// ==========================================
+// FITUR /DELWC (HAPUS BUG & CLOUDFLARE API)
+// ==========================================
+bot.command('delwc', async (ctx) => {
+    if (ctx.from.id !== ADMIN_ID) {
+        return ctx.reply('❌ Akses ditolak! Perintah ini khusus untuk Admin.');
+    }
+
+    const args = ctx.message.text.split(' ').slice(1);
+    const bugId = args[0]; // Contoh: bug7
+
+    if (!bugId) {
+        return ctx.reply(
+            '⚠️ **Format Salah!**\n\n' +
+            'Gunakan format berikut:\n' +
+            '`/delwc <id_unik>`\n\n' +
+            'Contoh:\n' +
+            '`/delwc bug7`',
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    let currentBugList = getBugList();
+    const targetBug = currentBugList.find(b => b.id === bugId);
+
+    if (!targetBug) {
+        return ctx.reply(`⚠️ Gagal: ID Bug \`${bugId}\` tidak ditemukan di database bot!`, { parse_mode: 'Markdown' });
+    }
+
+    await ctx.reply(`🔄 Sedang menghapus domain \`${targetBug.host}\` dari Cloudflare Worker...`, { parse_mode: 'Markdown' });
+
+    try {
+        const CLOUDFLARE_API_TOKEN = process.env.CF_API_TOKEN; 
+        const CLOUDFLARE_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
+        const WORKER_NAME = process.env.CF_WORKER_NAME;
+
+        if (!CLOUDFLARE_API_TOKEN || !CLOUDFLARE_ACCOUNT_ID || !WORKER_NAME) {
+            return ctx.reply('❌ Gagal: Variabel environment Cloudflare belum disetel di Railway!');
+        }
+
+        // Request ke Cloudflare API untuk menghapus Custom Domain dari Worker (DELETE method)
+        const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${WORKER_NAME}/domains/${targetBug.host}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const cfResult = await response.json();
+
+        // Lanjutkan penghapusan di lokal bot meskipun domain sudah terhapus atau tidak ditemukan di Cloudflare
+        const updatedBugList = currentBugList.filter(b => b.id !== bugId);
+        fs.writeFileSync(BUGS_FILE, JSON.stringify(updatedBugList, null, 2));
+
+        await ctx.reply(
+            `✅ **Berhasil Menghapus Bug / Domain!**\n\n` +
+            `🆔 ID: \`${bugId}\`\n` +
+            `🌐 Domain: \`${targetBug.host}\`\n\n` +
+            `Domain telah dihapus dari Cloudflare Worker dan menu bot.`,
             { parse_mode: 'Markdown' }
         );
 
@@ -377,6 +461,7 @@ async function showBugMenu(ctx) {
     const countryData = dataServer[session.country];
     const prov = session.provider;
 
+    const bugList = getBugList();
     const buttons = bugList.map(bug => [Markup.button.callback(bug.name, `bug_${bug.id}`)]);
     buttons.push([Markup.button.callback('« Back', `prov_${prov.id}`), Markup.button.callback('❌ Cancel', 'back_home')]);
 
@@ -385,10 +470,10 @@ async function showBugMenu(ctx) {
     }).catch(()=>{});
 }
 
-// Handler dinamis untuk menangani bug bawaan maupun bug baru dari /addwc
 bot.action(/^bug_(.+)$/, async (ctx) => {
     if (!checkSession(ctx)) return;
     const bugId = ctx.match[1];
+    const bugList = getBugList();
     const selectedBug = bugList.find(b => b.id === bugId);
 
     if (!selectedBug) {
@@ -425,67 +510,4 @@ async function generateAndSendVless(ctx) {
         targetHost = selectedDomain;
         sniValue = `${session.bug.host}.${selectedDomain}`;
         modeTitle = `SNI/SSL (${session.bug.name})`;
-    } else if (session.mode === 'wildcard') {
-        targetHost = session.bug.host;
-        sniValue = `${session.bug.host}.${selectedDomain}`;
-        modeTitle = `WILDCARD (${session.bug.name})`;
-    }
-
-    const configLink = `vless://${uuid}@${targetHost}:443?encryption=none&type=ws&host=${sniValue}&headerType=none&path=${pathValue}&security=tls&sni=${sniValue}#${encodedName}`;
-
-    const resultText = `
-╔═════════════════╗
-   *SERVERLESS VLESS*
-╚═════════════════╝
-
-:: SERVER PROFILE ————————
-├ Protokol: VLESS
-├ Format: URL (V2Ray)
-├ TLS: Aktif
-├ Domain : ${selectedDomain}
-├ Location : ${countryData.flag} ${countryData.name}
-├ ISP : ${prov.name}
-├ Proxy IP : ${prov.proxy}
-├ Mode : ${modeTitle}
-├ Host / Target : ${targetHost}
-├ SNI : ${sniValue}
-
-🔒 **TLS - PORT 443**
-\`${configLink}\`
-    `;
-
-    const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🔄 Buat Lagi', 'select_domain')]]);
-    await ctx.editMessageText(resultText, { parse_mode: 'Markdown', ...keyboard }).catch(()=>{});
-
-    // Kirim Notifikasi ke Admin secara otomatis
-    try {
-        const user = ctx.from;
-        const name = user.first_name + (user.last_name ? ' ' + user.last_name : '');
-        const username = user.username ? `@${user.username}` : 'Tanpa Username';
-        
-        const notifText = `🔔 **NOTIFIKASI: AKUN BARU DIBUAT!**\n\n` +
-                          `👤 Nama: ${name}\n` +
-                          `🔗 Username: ${username}\n` +
-                          `🆔 ID: \`${user.id}\`\n` +
-                          `🌐 Domain: ${selectedDomain}\n` +
-                          `🌍 Negara: ${countryData.flag} ${countryData.name}\n` +
-                          `🏢 ISP: ${prov.name}\n` +
-                          `⚙️ Mode: ${modeTitle}`;
-
-        await bot.telegram.sendMessage(ADMIN_ID, notifText, { parse_mode: 'Markdown' });
-    } catch (e) {
-        console.log("Gagal mengirim notifikasi ke admin:", e.message);
-    }
-}
-
-bot.action('back_home', async (ctx) => {
-    const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🚀 Create Account VLESS', 'select_domain')]]);
-    await ctx.editMessageText('Silakan tekan tombol di bawah untuk membuat akun VLESS:', { parse_mode: 'Markdown', ...keyboard }).catch(()=>{});
-});
-
-bot.launch();
-console.log('Bot VLESS Berjalan Sempurna...');
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-        
+    } else if (session.mode === 'wildcard
