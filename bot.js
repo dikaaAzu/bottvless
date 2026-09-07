@@ -8,6 +8,10 @@ const http = require('http');
 // ==========================================
 const BOT_TOKEN = "8475657676:AAF7SVtg-PhIXmID9CYSDQkyH8H2UvFcskw";
 const ADMIN_ID = 6161529489; 
+
+// 🔴 TAMBAHKAN USERNAME CHANNEL ANDA DI SINI (Wajib pakai '@')
+const CHANNEL_USERNAME = '@vlazxz'; 
+
 const bot = new Telegraf(BOT_TOKEN);
 
 const USERS_FILE = 'users.json';
@@ -124,6 +128,91 @@ function checkSession(ctx) {
     }
     return true;
 }
+
+// ==========================================
+// FUNGSI CEK KEANGGOTAAN CHANNEL
+// ==========================================
+async function checkMembership(userId) {
+    // Admin dibebaskan dari syarat join channel
+    if (userId === ADMIN_ID) return true;
+
+    try {
+        const chatMember = await bot.telegram.getChatMember(CHANNEL_USERNAME, userId);
+        const validStatuses = ['creator', 'administrator', 'member'];
+        return validStatuses.includes(chatMember.status);
+    } catch (error) {
+        console.log("Gagal mengecek status member:", error.message);
+        // Jika bot bukan admin di channel, amannya kembalikan false atau true (sesuaikan kebutuhan)
+        return false;
+    }
+}
+
+// ==========================================
+// MIDDLEWARE: FORCE JOIN & REKAM USER
+// ==========================================
+bot.use(async (ctx, next) => {
+    if (!ctx.from) return next();
+
+    // Rekam user otomatis
+    saveUser(ctx.from.id);
+
+    // Pengecualian tombol verifikasi agar tidak berputar-putar
+    if (ctx.callbackQuery && ctx.callbackQuery.data === 'check_membership') {
+        return next();
+    }
+
+    // Cek apakah user sudah join channel
+    const isMember = await checkMembership(ctx.from.id);
+    if (!isMember) {
+        const joinText = `
+⚠️ **PERHATIAN!**
+
+Untuk dapat menggunakan bot ini, kamu diwajibkan untuk bergabung terlebih dahulu ke channel resmi kami:
+👉 ${CHANNEL_USERNAME}
+
+Silakan klik tombol **"Gabung Channel"** di bawah, lalu tekan **"Verifikasi / Check"** setelah bergabung.
+        `;
+        
+        const joinKeyboard = Markup.inlineKeyboard([
+            [Markup.button.url('📢 Gabung Channel', `https://t.me/${CHANNEL_USERNAME.replace('@', '')}`)],
+            [Markup.button.callback('🔄 Verifikasi / Check', 'check_membership')]
+        ]);
+
+        if (ctx.callbackQuery) {
+            return ctx.answerCbQuery('❌ Kamu belum bergabung ke channel!', { show_alert: true }).catch(()=>{});
+        }
+        return ctx.reply(joinText, { parse_mode: 'Markdown', ...joinKeyboard });
+    }
+
+    return next();
+});
+
+// Callback tombol verifikasi manual
+bot.action('check_membership', async (ctx) => {
+    const isMember = await checkMembership(ctx.from.id);
+    if (!isMember) {
+        return ctx.answerCbQuery('❌ Kamu belum bergabung ke channel!', { show_alert: true });
+    }
+
+    await ctx.answerCbQuery('✅ Verifikasi berhasil! Memuat menu utama...');
+    // Lanjutkan langsung memunculkan menu start
+    const keyboard = Markup.inlineKeyboard([[Markup.button.callback('🚀 Create Account VLESS', 'select_domain')]]);
+    const welcomeText = `
+╔══════════════════╗
+   VLAZZ SERVERLESS VLESS
+╚══════════════════╝
+Selamat datang di layanan akun VLESS gratis!
+
+:: SYSTEM INFO ————————
+├ Status  : ONLINE (VLESS ONLY)
+├ owner   : @heyyybangsyadd
+
+Silakan tekan tombol di bawah untuk membuat akun VLESS:
+    `;
+    await ctx.editMessageText(welcomeText, { parse_mode: 'Markdown', ...keyboard }).catch(() => {
+        ctx.reply(welcomeText, { parse_mode: 'Markdown', ...keyboard });
+    });
+});
 
 // ==========================================
 // FITUR /ADDWC (TAMBAH BUG & CLOUDFLARE API)
@@ -258,16 +347,6 @@ bot.command('broadcast', async (ctx) => {
     } catch (e) {
         await ctx.reply('⚠️ Terjadi kesalahan membaca database pengguna.');
     }
-});
-
-// ==========================================
-// MIDDLEWARE: REKAM USER OTOMATIS (BEBAS MASUK)
-// ==========================================
-bot.use(async (ctx, next) => {
-    if (ctx.from) {
-        saveUser(ctx.from.id);
-    }
-    return next();
 });
 
 // ==========================================
