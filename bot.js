@@ -6,7 +6,7 @@ const http = require('http');
 // ==========================================
 // PENGATURAN UTAMA BOT
 // ==========================================
-const BOT_TOKEN = "8475657676:AAF7SVtg-PhIXmID9CYSDQkyH8H2UvFcskw";
+const BOT_TOKEN = "8475657676:AAEYdPa0Yn7Fd6HtZ2f3O9z--vrw-zkUFxI";
 const ADMIN_ID = 6161529489; 
 
 // 🔴 TAMBAHKAN USERNAME CHANNEL ANDA DI SINI (Wajib pakai '@')
